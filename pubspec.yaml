@@ -1,0 +1,47 @@
+name: flytube
+description: "A No-Ads Music and Video Streaming App Boilerplate using Invidious API."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Networking
+  dio: ^5.4.0
+  
+  # State Management
+  provider: ^6.1.1
+  
+  # Media Engine & Background Service
+  just_audio: ^0.9.36
+  audio_service: ^0.18.12
+  audio_session: ^0.1.16
+  
+  # Image & Data
+  cached_network_image: ^3.3.1
+  shared_preferences: ^2.2.2
+  
+  # UI/UX elements
+  cupertino_icons: ^1.0.6
+  youtube_explode_dart: ^3.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+
+# Flutter Launcher Icons config
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon.png"
+  min_sdk_android: 21
