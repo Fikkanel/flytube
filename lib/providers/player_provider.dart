@@ -80,6 +80,8 @@ class PlayerProvider extends ChangeNotifier {
   bool _isSwitchingMode = false;
   bool get isSwitchingMode => _isSwitchingMode;
 
+  bool _videoFinished = false;
+
   bool _showMiniPlayer = false;
   bool get showMiniPlayer => _showMiniPlayer && _currentMode == PlaybackMode.video && _videoController != null;
 
@@ -153,8 +155,11 @@ class PlayerProvider extends ChangeNotifier {
       // 2. Extract muxed video stream URL
       _videoStreamUrl ??= await audioHandler.getVideoStreamUrl(video.videoId);
       
+      // Abort if track changed during await
+      if (_lastVideoId != video.videoId) return;
+
       if (_videoStreamUrl == null) {
-        _errorMessage = 'Gagal memuat video. Stream video tidak tersedia.';
+        debugPrint('Gagal memuat video. Stream video tidak tersedia.');
         _isSwitchingMode = false;
         notifyListeners();
         return;
@@ -172,6 +177,13 @@ class PlayerProvider extends ChangeNotifier {
       );
 
       await _videoController!.initialize();
+      
+      // Abort if track changed during await
+      if (_lastVideoId != video.videoId) {
+        await _disposeVideoController();
+        return;
+      }
+
       _isVideoReady = true;
 
       // 4. Sync position & switch
@@ -188,7 +200,8 @@ class PlayerProvider extends ChangeNotifier {
       _videoController!.addListener(_onVideoControllerUpdate);
     } catch (e) {
       debugPrint("Switch to video failed: $e");
-      _errorMessage = 'Gagal beralih ke mode video.';
+      // Don't set global _errorMessage so we don't break the audio player UI
+      _currentMode = PlaybackMode.audio;
       // Ensure audio keeps playing
       audioHandler.play();
     } finally {
@@ -332,6 +345,19 @@ class PlayerProvider extends ChangeNotifier {
 
   void _onVideoControllerUpdate() {
     if (_videoController == null) return;
+
+    // Auto-play next track if video is finished
+    if (_videoController!.value.isInitialized &&
+        _videoController!.value.duration > Duration.zero &&
+        _videoController!.value.position >= _videoController!.value.duration) {
+      if (!_videoFinished) {
+        _videoFinished = true;
+        audioHandler.skipToNext();
+      }
+    } else {
+      _videoFinished = false;
+    }
+
     // Notify UI about position/state changes
     notifyListeners();
   }
