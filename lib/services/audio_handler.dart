@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import 'package:dio/dio.dart';
 
 Future<AudioHandler> initAudioService() async {
   return await AudioService.init(
@@ -18,6 +20,17 @@ Future<AudioHandler> initAudioService() async {
 class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
   final _player = AudioPlayer();
   static final _yt = YoutubeExplode();
+  static final _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 5),
+    receiveTimeout: const Duration(seconds: 5),
+  ));
+
+  /// Piped API instances as fallback stream extractors
+  static const _pipedInstances = [
+    'https://pipedapi.kavin.rocks',
+    'https://pipedapi.adminforge.de',
+    'https://pipedapi.in.projectsegfau.lt',
+  ];
 
   FlyTubeAudioHandler() {
     _notifyAudioHandlerAboutPlaybackEvents();
@@ -91,7 +104,6 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
     final currentIndex = queue.value.indexWhere((item) => item.id == currentItem.id);
     if (currentIndex == -1 || currentIndex >= queue.value.length - 1) {
       if (queue.value.isNotEmpty) {
-         // Loop back or stop. We'll loop to the beginning if they hit next at the end.
          await loadVideo(queue.value.first, '');
       }
       return;
@@ -106,7 +118,6 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
 
     final currentIndex = queue.value.indexWhere((item) => item.id == currentItem.id);
     if (currentIndex <= 0) {
-      // If at start, either restart song or go to end
       if (_player.position.inSeconds > 3) {
         await seek(Duration.zero);
       } else if (queue.value.isNotEmpty) {
@@ -131,63 +142,253 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
       }
   }
 
+  // =========================================================================
+  // FAST PARALLEL STREAM EXTRACTION
+  // =========================================================================
+
+  /// Load and play a video. Uses parallel extraction for ~2-3s loading.
   Future<bool> loadVideo(MediaItem item, String streamUrl) async {
-    // AUDIO OVERLAP BUG FIX: Directly stop current playback
     await _player.stop();
     
-    // Add to queue if not present
     if (!queue.value.any((q) => q.id == item.id)) {
        addQueueItem(item);
     }
-    
     mediaItem.add(item);
     
     try {
-      final clientsToTry = [
-        [YoutubeApiClient.tv],
-        [YoutubeApiClient.ios],
-        [YoutubeApiClient.safari],
-        [YoutubeApiClient.androidVr],
-      ];
+      // Race all extraction methods in parallel — first success wins
+      final url = await _getStreamUrlFast(item.id);
       
-      StreamManifest? manifest;
-      for (final clients in clientsToTry) {
-        try {
-          manifest = await _yt.videos.streamsClient.getManifest(item.id, ytClients: clients);
-          if (manifest.audioOnly.isNotEmpty) {
-            break; // Berhasil mendeteksi aliran suara!
-          }
-        } catch (e) {
-          debugPrint("Client $clients gagal: $e");
-          continue; // Coba client berikutnya
-        }
+      if (url == null) {
+        throw Exception("Semua metode ekstraksi gagal.");
       }
-
-      if (manifest == null || manifest.audioOnly.isEmpty) {
-         throw Exception("Semua jalur ekstraksi YouTube terblokir.");
-      }
-      
-      final streamInfo = manifest.audioOnly.firstWhere(
-        (s) => s.codec.mimeType.contains('mp4') || s.codec.mimeType.contains('m4a'),
-        orElse: () => manifest!.audioOnly.first
-      );
       
       await _player.setAudioSource(AudioSource.uri(
-        streamInfo.url,
+        Uri.parse(url),
         headers: const {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Origin': 'https://www.youtube.com',
           'Referer': 'https://www.youtube.com/',
         }
       ));
       
       play();
-      return true; // Berhasil dimuat murni!
+      return true;
     } catch (e) {
-      debugPrint("Gagal memutar video setelah semua bypass internal dicoba: $e");
+      debugPrint("Gagal memutar video: $e");
       return false; 
     }
   }
+
+  /// Races all extraction sources in parallel — returns first successful URL.
+  Future<String?> _getStreamUrlFast(String videoId) async {
+    final completer = Completer<String?>();
+    int pending = 0;
+
+    void onResult(String? url) {
+      if (url != null && !completer.isCompleted) {
+        completer.complete(url);
+      } else {
+        pending--;
+        if (pending <= 0 && !completer.isCompleted) {
+          completer.complete(null);
+        }
+      }
+    }
+
+    // Launch youtube_explode clients in parallel
+    final ytClients = [
+      [YoutubeApiClient.ios],
+      [YoutubeApiClient.tv],
+      [YoutubeApiClient.safari],
+      [YoutubeApiClient.androidVr],
+    ];
+
+    for (final clients in ytClients) {
+      pending++;
+      _extractViaYtExplode(videoId, clients)
+          .then(onResult)
+          .catchError((_) => onResult(null));
+    }
+
+    // Launch Piped API instances in parallel as fallback
+    for (final instance in _pipedInstances) {
+      pending++;
+      _extractViaPiped(videoId, instance)
+          .then(onResult)
+          .catchError((_) => onResult(null));
+    }
+
+    // Overall safety timeout — should resolve much faster via the race
+    return completer.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () => null,
+    );
+  }
+
+  /// Extract audio stream URL via youtube_explode with a specific client.
+  Future<String?> _extractViaYtExplode(
+      String videoId, List<YoutubeApiClient> clients) async {
+    try {
+      final manifest = await _yt.videos.streamsClient
+          .getManifest(videoId, ytClients: clients)
+          .timeout(const Duration(seconds: 6));
+
+      if (manifest.audioOnly.isEmpty) return null;
+
+      // Prefer mp4/m4a for compatibility, pick reasonable bitrate
+      final sorted = manifest.audioOnly.toList()
+        ..sort((a, b) =>
+            b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
+
+      final stream = sorted.firstWhere(
+        (s) =>
+            s.codec.mimeType.contains('mp4') ||
+            s.codec.mimeType.contains('m4a'),
+        orElse: () => sorted.first,
+      );
+
+      return stream.url.toString();
+    } catch (e) {
+      debugPrint("YT Explode [$clients] gagal: $e");
+      return null;
+    }
+  }
+
+  /// Extract audio stream URL via Piped API instance.
+  Future<String?> _extractViaPiped(String videoId, String instance) async {
+    try {
+      final response = await _dio.get('$instance/streams/$videoId');
+      if (response.statusCode == 200 && response.data != null) {
+        final audioStreams = response.data['audioStreams'] as List?;
+        if (audioStreams != null && audioStreams.isNotEmpty) {
+          // Sort by bitrate descending, pick a good quality stream
+          audioStreams.sort(
+              (a, b) => (b['bitrate'] ?? 0).compareTo(a['bitrate'] ?? 0));
+          // Pick medium quality for faster buffering
+          final idx = audioStreams.length > 2 ? 1 : 0;
+          final url = audioStreams[idx]['url'] as String?;
+          if (url != null && url.isNotEmpty) return url;
+        }
+      }
+    } catch (e) {
+      debugPrint("Piped [$instance] gagal: $e");
+    }
+    return null;
+  }
+
+  // =========================================================================
+  // VIDEO (MUXED) STREAM EXTRACTION
+  // =========================================================================
+
+  /// Get a muxed (video+audio) stream URL for video playback mode.
+  /// Uses parallel extraction similar to audio — first success wins.
+  Future<String?> getVideoStreamUrl(String videoId) async {
+    final completer = Completer<String?>();
+    int pending = 0;
+
+    void onResult(String? url) {
+      if (url != null && !completer.isCompleted) {
+        completer.complete(url);
+      } else {
+        pending--;
+        if (pending <= 0 && !completer.isCompleted) {
+          completer.complete(null);
+        }
+      }
+    }
+
+    // youtube_explode muxed streams in parallel
+    final ytClients = [
+      [YoutubeApiClient.ios],
+      [YoutubeApiClient.tv],
+      [YoutubeApiClient.safari],
+      [YoutubeApiClient.androidVr],
+    ];
+
+    for (final clients in ytClients) {
+      pending++;
+      _extractMuxedViaYtExplode(videoId, clients)
+          .then(onResult)
+          .catchError((_) => onResult(null));
+    }
+
+    // Piped video streams in parallel
+    for (final instance in _pipedInstances) {
+      pending++;
+      _extractVideoViaPiped(videoId, instance)
+          .then(onResult)
+          .catchError((_) => onResult(null));
+    }
+
+    return completer.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () => null,
+    );
+  }
+
+  /// Extract muxed (video+audio) stream via youtube_explode.
+  Future<String?> _extractMuxedViaYtExplode(
+      String videoId, List<YoutubeApiClient> clients) async {
+    try {
+      final manifest = await _yt.videos.streamsClient
+          .getManifest(videoId, ytClients: clients)
+          .timeout(const Duration(seconds: 6));
+
+      if (manifest.muxed.isEmpty) return null;
+
+      // Prefer 720p, fallback to highest available
+      final sorted = manifest.muxed.toList()
+        ..sort((a, b) =>
+            b.videoResolution.height.compareTo(a.videoResolution.height));
+
+      final stream = sorted.firstWhere(
+        (s) => s.videoResolution.height <= 720,
+        orElse: () => sorted.last,
+      );
+
+      return stream.url.toString();
+    } catch (e) {
+      debugPrint("YT Muxed [$clients] gagal: $e");
+      return null;
+    }
+  }
+
+  /// Extract video stream via Piped API.
+  Future<String?> _extractVideoViaPiped(String videoId, String instance) async {
+    try {
+      final response = await _dio.get('$instance/streams/$videoId');
+      if (response.statusCode == 200 && response.data != null) {
+        final videoStreams = response.data['videoStreams'] as List?;
+        if (videoStreams != null && videoStreams.isNotEmpty) {
+          // Filter for streams with audio (non-DASH, videoOnly=false)
+          final muxed = videoStreams
+              .where((s) => s['videoOnly'] == false)
+              .toList();
+          if (muxed.isEmpty) return null;
+
+          // Sort by quality, prefer 720p
+          muxed.sort(
+              (a, b) => (b['quality']?.toString().replaceAll('p', '') ?? '0')
+                  .compareTo(a['quality']?.toString().replaceAll('p', '') ?? '0'));
+
+          // Find 720p or closest
+          final stream = muxed.firstWhere(
+            (s) => s['quality']?.toString().contains('720') == true,
+            orElse: () => muxed.first,
+          );
+          final url = stream['url'] as String?;
+          if (url != null && url.isNotEmpty) return url;
+        }
+      }
+    } catch (e) {
+      debugPrint("Piped Video [$instance] gagal: $e");
+    }
+    return null;
+  }
+
+  /// Current playback position (exposed for mode switching sync).
+  Duration get currentPosition => _player.position;
 
   @override
   Future<void> play() => _player.play();
