@@ -7,6 +7,7 @@ import 'providers/player_provider.dart';
 import 'services/audio_handler.dart';
 import 'services/pip_service.dart';
 import 'widgets/mini_video_player.dart';
+import 'package:video_player/video_player.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,6 +62,28 @@ class _FlyTubeAppState extends State<FlyTubeApp> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       home: const _AppShell(),
+      builder: (context, child) {
+        return Consumer<PlayerProvider>(
+          builder: (context, provider, _) {
+            if (provider.isInPipMode && provider.videoController != null) {
+              return Material(
+                color: Colors.black,
+                child: SizedBox.expand(
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: provider.videoController!.value.size.width,
+                      height: provider.videoController!.value.size.height,
+                      child: VideoPlayer(provider.videoController!),
+                    ),
+                  ),
+                ),
+              );
+            }
+            return child!;
+          },
+        );
+      },
     );
   }
 }
