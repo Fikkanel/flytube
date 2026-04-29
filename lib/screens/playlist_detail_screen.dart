@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/playlist_model.dart';
-import '../models/video_model.dart';
 import '../providers/playlist_provider.dart';
 import '../providers/player_provider.dart';
 import 'player_screen.dart';
