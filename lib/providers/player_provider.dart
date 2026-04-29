@@ -176,7 +176,12 @@ class PlayerProvider extends ChangeNotifier {
         },
       );
 
-      await _videoController!.initialize();
+      await _videoController!.initialize().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw Exception('Video initialization timed out');
+        },
+      );
       
       // Abort if track changed during await
       if (_lastVideoId != video.videoId) {
@@ -222,8 +227,13 @@ class PlayerProvider extends ChangeNotifier {
 
       // 2. Switch to audio
       await _videoController?.pause();
-      await audioHandler.seek(currentPos);
-      await audioHandler.play();
+      
+      try {
+        await audioHandler.seek(currentPos).timeout(const Duration(seconds: 3));
+        await audioHandler.play().timeout(const Duration(seconds: 3));
+      } catch (e) {
+        debugPrint("Audio seek/play timed out: $e");
+      }
 
       _currentMode = PlaybackMode.audio;
       _showMiniPlayer = false;
