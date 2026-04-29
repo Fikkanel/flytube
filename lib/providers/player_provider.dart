@@ -15,6 +15,11 @@ class PlayerProvider extends ChangeNotifier {
   String? _lastVideoId;
 
   PlayerProvider(this.audioHandler, this.pipService) {
+    _loadSettings();
+    
+    // Master Sync: Listen to audio state to control video controller
+    audioHandler.playbackState.listen(_onPlaybackStateChanged);
+
     audioHandler.mediaItem.listen((item) {
       if (item != null && item.id != _lastVideoId) {
         _lastVideoId = item.id;
@@ -401,6 +406,28 @@ class PlayerProvider extends ChangeNotifier {
   // Internal
   // ---------------------------------------------------------------------------
 
+  void _onPlaybackStateChanged(PlaybackState state) {
+    if (_currentMode != PlaybackMode.video || _videoController == null || _isSwitchingMode) return;
+
+    final isAudioPlaying = state.playing;
+    final audioPos = state.position;
+
+    // Sync Play/Pause
+    if (isAudioPlaying && !_videoController!.value.isPlaying) {
+      _videoController!.play();
+    } else if (!isAudioPlaying && _videoController!.value.isPlaying) {
+      _videoController!.pause();
+    }
+
+    // Sync Position (Drift correction)
+    final drift = (_videoController!.value.position - audioPos).abs().inMilliseconds;
+    if (isAudioPlaying && drift > 1500) {
+      _videoController!.seekTo(audioPos);
+    }
+    
+    notifyListeners();
+  }
+
   void _onVideoControllerUpdate() {
     if (_videoController == null) return;
 
@@ -416,26 +443,6 @@ class PlayerProvider extends ChangeNotifier {
       _videoFinished = false;
     }
 
-    // Active Sync: Ensure video stays in sync with audio
-    final audioPos = audioHandler.playbackState.value.position;
-    final isAudioPlaying = audioHandler.playbackState.value.playing;
-    
-    // If audio is playing but video is not, try to resume video
-    if (isAudioPlaying && !_videoController!.value.isPlaying && !_isSwitchingMode) {
-      _videoController!.play();
-    } else if (!isAudioPlaying && _videoController!.value.isPlaying) {
-      _videoController!.pause();
-    }
-
-    // Drift correction: if more than 2 seconds apart, seek video to audio
-    if (isAudioPlaying) {
-      final drift = (_videoController!.value.position - audioPos).abs().inMilliseconds;
-      if (drift > 2000) {
-        _videoController!.seekTo(audioPos);
-      }
-    }
-
-    // Notify UI about position/state changes
     notifyListeners();
   }
 
