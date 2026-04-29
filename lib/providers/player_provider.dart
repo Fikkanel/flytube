@@ -47,7 +47,17 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _isAntiBlokirEnabled = prefs.getBool('anti_blokir') ?? false;
+    _customProxyUrl = prefs.getString('custom_proxy_url') ?? 'https://flytube-proxy.putraneayah1.workers.dev/?url=';
     audioHandler.isAntiBlokirEnabled = _isAntiBlokirEnabled;
+    audioHandler.customProxyUrl = _customProxyUrl;
+    notifyListeners();
+  }
+
+  Future<void> setCustomProxyUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    _customProxyUrl = url;
+    await prefs.setString('custom_proxy_url', url);
+    audioHandler.customProxyUrl = url;
     notifyListeners();
   }
 
@@ -59,7 +69,10 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  String? _customProxyUrl;
   bool _isAntiBlokirEnabled = false;
+
+  String? get customProxyUrl => _customProxyUrl;
   bool get isAntiBlokirEnabled => _isAntiBlokirEnabled;
 
   // ---------------------------------------------------------------------------

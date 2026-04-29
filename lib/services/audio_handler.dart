@@ -26,6 +26,7 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
   ));
 
   bool isAntiBlokirEnabled = false;
+  String? customProxyUrl;
 
   /// Piped API instances as fallback stream extractors
   static const _pipedInstances = [
@@ -284,7 +285,8 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
     try {
       String url = '$instance/streams/$videoId';
       if (isAntiBlokirEnabled) {
-        url = 'https://corsproxy.io/?url=${Uri.encodeComponent(url)}';
+        final proxyBase = customProxyUrl ?? 'https://corsproxy.io/?url=';
+        url = '$proxyBase${Uri.encodeComponent(url)}';
       }
       
       final response = await _dio.get(url);
@@ -311,7 +313,8 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
     try {
       String url = '$instance/api/v1/videos/$videoId';
       if (isAntiBlokirEnabled) {
-        url = 'https://corsproxy.io/?url=${Uri.encodeComponent(url)}';
+        final proxyBase = customProxyUrl ?? 'https://corsproxy.io/?url=';
+        url = '$proxyBase${Uri.encodeComponent(url)}';
       }
 
       final response = await _dio.get(url);
