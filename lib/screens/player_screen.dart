@@ -44,22 +44,23 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<PlayerProvider>();
+
     return PopScope(
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) {
-          final provider = context.read<PlayerProvider>();
           if (provider.currentMode == PlaybackMode.video) {
             provider.showMiniVideoPlayer();
           }
         }
       },
       child: Scaffold(
-        appBar: AppBar(
+        appBar: provider.isInPipMode ? null : AppBar(
           title: const Text('Playing From Search'),
           centerTitle: true,
         ),
-        body: Consumer<PlayerProvider>(
-          builder: (context, provider, child) {
+        body: Builder(
+          builder: (context) {
             final video = provider.currentVideo;
             if (video == null) {
                return const Center(child: Text("No video selected."));
@@ -83,6 +84,23 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
                   ),
                 ),
               );
+            }
+
+            if (provider.isInPipMode) {
+              if (provider.videoController != null) {
+                return SizedBox.expand(
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: provider.videoController!.value.size.width,
+                      height: provider.videoController!.value.size.height,
+                      child: VideoPlayer(provider.videoController!),
+                    ),
+                  ),
+                );
+              } else {
+                return const Center(child: CircularProgressIndicator(color: Color(0xFF1DB954)));
+              }
             }
 
             return Column(
