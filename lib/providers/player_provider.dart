@@ -11,8 +11,23 @@ class PlayerProvider extends ChangeNotifier {
   final FlyTubeAudioHandler audioHandler;
   final PipService pipService;
 
+  String? _lastVideoId;
+
   PlayerProvider(this.audioHandler, this.pipService) {
     audioHandler.mediaItem.listen((item) {
+      if (item != null && item.id != _lastVideoId) {
+        _lastVideoId = item.id;
+        _videoStreamUrl = null; // Clear old video URL!
+
+        // Revert to audio mode if track changes via queue skip
+        if (_currentMode == PlaybackMode.video) {
+          _currentMode = PlaybackMode.audio;
+          _showMiniPlayer = false;
+          pipService.setShouldEnterPip(false);
+          _disposeVideoController();
+          audioHandler.play();
+        }
+      }
       notifyListeners();
     });
 
@@ -32,15 +47,17 @@ class PlayerProvider extends ChangeNotifier {
 
   VideoModel? _currentVideoModel;
   VideoModel? get currentVideo {
-    if (_currentVideoModel != null) return _currentVideoModel;
     final item = audioHandler.mediaItem.value;
-    if (item == null) return null;
+    if (item == null) {
+      if (_currentVideoModel != null) return _currentVideoModel;
+      return null;
+    }
     return VideoModel(
       videoId: item.id,
       title: item.title,
       author: item.artist ?? 'Unknown Artist',
       thumbnail: item.artUri?.toString() ?? '',
-      lengthSeconds: 0,
+      lengthSeconds: item.duration?.inSeconds ?? _currentVideoModel?.lengthSeconds ?? 0,
       authorId: '',
     );
   }
@@ -81,6 +98,8 @@ class PlayerProvider extends ChangeNotifier {
     _currentVideoModel = video;
     _currentMode = PlaybackMode.audio;
     _showMiniPlayer = false;
+    _videoStreamUrl = null;
+    _lastVideoId = video.videoId;
     await _disposeVideoController();
     notifyListeners();
 
