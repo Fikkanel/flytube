@@ -329,12 +329,22 @@ class PlayerProvider extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   Future<void> videoPlay() async {
+    if (_videoController == null) return;
+    
+    // Sync video position to audio position before playing to avoid jump
+    final audioPos = audioHandler.playbackState.value.position;
+    if ((_videoController!.value.position - audioPos).abs().inMilliseconds > 1000) {
+      await _videoController!.seekTo(audioPos);
+    }
+
     await _videoController?.play();
+    await audioHandler.play();
     notifyListeners();
   }
 
   Future<void> videoPause() async {
     await _videoController?.pause();
+    await audioHandler.pause();
     notifyListeners();
   }
 
@@ -343,7 +353,7 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get isVideoPlaying => _videoController?.value.isPlaying ?? false;
+  bool get isVideoPlaying => audioHandler.playbackState.value.playing;
 
   Duration get videoPosition => _videoController?.value.position ?? Duration.zero;
 
@@ -391,6 +401,25 @@ class PlayerProvider extends ChangeNotifier {
       }
     } else {
       _videoFinished = false;
+    }
+
+    // Active Sync: Ensure video stays in sync with audio
+    final audioPos = audioHandler.playbackState.value.position;
+    final isAudioPlaying = audioHandler.playbackState.value.playing;
+    
+    // If audio is playing but video is not, try to resume video
+    if (isAudioPlaying && !_videoController!.value.isPlaying && !_isSwitchingMode) {
+      _videoController!.play();
+    } else if (!isAudioPlaying && _videoController!.value.isPlaying) {
+      _videoController!.pause();
+    }
+
+    // Drift correction: if more than 2 seconds apart, seek video to audio
+    if (isAudioPlaying) {
+      final drift = (_videoController!.value.position - audioPos).abs().inMilliseconds;
+      if (drift > 2000) {
+        _videoController!.seekTo(audioPos);
+      }
     }
 
     // Notify UI about position/state changes
