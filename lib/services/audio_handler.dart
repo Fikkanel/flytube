@@ -30,6 +30,16 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
     'https://pipedapi.kavin.rocks',
     'https://pipedapi.adminforge.de',
     'https://pipedapi.in.projectsegfau.lt',
+    'https://pipedapi.tokhmi.xyz',
+    'https://pipedapi.syncpundit.io',
+  ];
+
+  /// Invidious API instances as secondary fallback
+  static const _invidiousInstances = [
+    'https://vid.puffyan.us',
+    'https://invidious.jing.rocks',
+    'https://invidious.nerdvpn.de',
+    'https://iv.ggtyler.dev',
   ];
 
   FlyTubeAudioHandler() {
@@ -219,6 +229,14 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
           .catchError((_) => onResult(null));
     }
 
+    // Launch Invidious API instances in parallel as secondary fallback
+    for (final instance in _invidiousInstances) {
+      pending++;
+      _extractViaInvidiousAudio(videoId, instance)
+          .then(onResult)
+          .catchError((_) => onResult(null));
+    }
+
     // Overall safety timeout — should resolve much faster via the race
     return completer.future.timeout(
       const Duration(seconds: 8),
@@ -277,6 +295,27 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
     return null;
   }
 
+  /// Extract audio stream URL via Invidious API instance.
+  Future<String?> _extractViaInvidiousAudio(String videoId, String instance) async {
+    try {
+      final response = await _dio.get('$instance/api/v1/videos/$videoId');
+      if (response.statusCode == 200 && response.data != null) {
+        final formats = response.data['adaptiveFormats'] as List?;
+        if (formats != null) {
+          final audioStreams = formats.where((f) => f['type']?.toString().contains('audio') == true).toList();
+          if (audioStreams.isNotEmpty) {
+            audioStreams.sort((a, b) => (int.tryParse(b['bitrate']?.toString() ?? '0') ?? 0)
+                .compareTo(int.tryParse(a['bitrate']?.toString() ?? '0') ?? 0));
+            return audioStreams.first['url'] as String?;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Invidious Audio [$instance] gagal: $e");
+    }
+    return null;
+  }
+
   // =========================================================================
   // VIDEO (MUXED) STREAM EXTRACTION
   // =========================================================================
@@ -317,6 +356,14 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
     for (final instance in _pipedInstances) {
       pending++;
       _extractVideoViaPiped(videoId, instance)
+          .then(onResult)
+          .catchError((_) => onResult(null));
+    }
+
+    // Invidious video streams in parallel
+    for (final instance in _invidiousInstances) {
+      pending++;
+      _extractViaInvidiousVideo(videoId, instance)
           .then(onResult)
           .catchError((_) => onResult(null));
     }
@@ -383,6 +430,35 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
       }
     } catch (e) {
       debugPrint("Piped Video [$instance] gagal: $e");
+    }
+    return null;
+  }
+
+  /// Extract muxed video stream URL via Invidious API instance.
+  Future<String?> _extractViaInvidiousVideo(String videoId, String instance) async {
+    try {
+      final response = await _dio.get('$instance/api/v1/videos/$videoId');
+      if (response.statusCode == 200 && response.data != null) {
+        final formats = response.data['formatStreams'] as List?;
+        if (formats != null) {
+          final videoStreams = formats.where((f) => f['type']?.toString().contains('video/mp4') == true).toList();
+          if (videoStreams.isNotEmpty) {
+            videoStreams.sort((a, b) {
+              int resA = int.tryParse(a['resolution']?.toString().replaceAll('p', '') ?? '0') ?? 0;
+              int resB = int.tryParse(b['resolution']?.toString().replaceAll('p', '') ?? '0') ?? 0;
+              return resB.compareTo(resA);
+            });
+            // Try to find 720p or fallback
+            final stream = videoStreams.firstWhere(
+              (s) => s['resolution']?.toString().contains('720') == true,
+              orElse: () => videoStreams.first,
+            );
+            return stream['url'] as String?;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Invidious Video [$instance] gagal: $e");
     }
     return null;
   }
