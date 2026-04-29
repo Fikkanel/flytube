@@ -25,6 +25,8 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
     receiveTimeout: const Duration(seconds: 5),
   ));
 
+  bool isAntiBlokirEnabled = false;
+
   /// Piped API instances as fallback stream extractors
   static const _pipedInstances = [
     'https://pipedapi.kavin.rocks',
@@ -98,6 +100,10 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> addQueueItems(List<MediaItem> mediaItems) async {
     final newQueue = queue.value..addAll(mediaItems);
     queue.add(newQueue);
+  }
+
+  Future<void> clearQueue() async {
+    queue.add([]);
   }
 
   @override
@@ -276,7 +282,12 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Extract audio stream URL via Piped API instance.
   Future<String?> _extractViaPiped(String videoId, String instance) async {
     try {
-      final response = await _dio.get('$instance/streams/$videoId');
+      String url = '$instance/streams/$videoId';
+      if (isAntiBlokirEnabled) {
+        url = 'https://corsproxy.io/?url=${Uri.encodeComponent(url)}';
+      }
+      
+      final response = await _dio.get(url);
       if (response.statusCode == 200 && response.data != null) {
         final audioStreams = response.data['audioStreams'] as List?;
         if (audioStreams != null && audioStreams.isNotEmpty) {
@@ -298,7 +309,12 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Extract audio stream URL via Invidious API instance.
   Future<String?> _extractViaInvidiousAudio(String videoId, String instance) async {
     try {
-      final response = await _dio.get('$instance/api/v1/videos/$videoId');
+      String url = '$instance/api/v1/videos/$videoId';
+      if (isAntiBlokirEnabled) {
+        url = 'https://corsproxy.io/?url=${Uri.encodeComponent(url)}';
+      }
+
+      final response = await _dio.get(url);
       if (response.statusCode == 200 && response.data != null) {
         final formats = response.data['adaptiveFormats'] as List?;
         if (formats != null) {
@@ -404,7 +420,12 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Extract video stream via Piped API.
   Future<String?> _extractVideoViaPiped(String videoId, String instance) async {
     try {
-      final response = await _dio.get('$instance/streams/$videoId');
+      String url = '$instance/streams/$videoId';
+      if (isAntiBlokirEnabled) {
+        url = 'https://corsproxy.io/?url=${Uri.encodeComponent(url)}';
+      }
+
+      final response = await _dio.get(url);
       if (response.statusCode == 200 && response.data != null) {
         final videoStreams = response.data['videoStreams'] as List?;
         if (videoStreams != null && videoStreams.isNotEmpty) {
@@ -437,7 +458,12 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Extract muxed video stream URL via Invidious API instance.
   Future<String?> _extractViaInvidiousVideo(String videoId, String instance) async {
     try {
-      final response = await _dio.get('$instance/api/v1/videos/$videoId');
+      String url = '$instance/api/v1/videos/$videoId';
+      if (isAntiBlokirEnabled) {
+        url = 'https://corsproxy.io/?url=${Uri.encodeComponent(url)}';
+      }
+
+      final response = await _dio.get(url);
       if (response.statusCode == 200 && response.data != null) {
         final formats = response.data['formatStreams'] as List?;
         if (formats != null) {

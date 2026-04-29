@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
-import 'screens/home_screen.dart';
+import 'screens/main_tab_screen.dart';
 import 'providers/search_provider.dart';
 import 'providers/player_provider.dart';
+import 'providers/playlist_provider.dart';
 import 'services/audio_handler.dart';
 import 'services/pip_service.dart';
 import 'widgets/mini_video_player.dart';
@@ -21,6 +22,7 @@ Future<void> main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => SearchProvider()),
         ChangeNotifierProvider(create: (_) => PlayerProvider(audioHandler, pipService)),
+        ChangeNotifierProvider(create: (_) => PlaylistProvider()),
       ],
       child: const FlyTubeApp(),
     ),
@@ -98,7 +100,7 @@ class _AppShell extends StatelessWidget {
     return const Stack(
       children: [
         // Main app content
-        HomeScreen(),
+        MainTabScreen(),
         // Floating mini video player overlay
         MiniVideoPlayer(),
       ],

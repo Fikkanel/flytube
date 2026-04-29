@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:video_player/video_player.dart';
 import '../models/video_model.dart';
@@ -39,7 +40,27 @@ class PlayerProvider extends ChangeNotifier {
         notifyListeners();
       }
     });
+
+    _loadSettings();
   }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    _isAntiBlokirEnabled = prefs.getBool('anti_blokir') ?? false;
+    audioHandler.isAntiBlokirEnabled = _isAntiBlokirEnabled;
+    notifyListeners();
+  }
+
+  Future<void> toggleAntiBlokir() async {
+    _isAntiBlokirEnabled = !_isAntiBlokirEnabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('anti_blokir', _isAntiBlokirEnabled);
+    audioHandler.isAntiBlokirEnabled = _isAntiBlokirEnabled;
+    notifyListeners();
+  }
+
+  bool _isAntiBlokirEnabled = false;
+  bool get isAntiBlokirEnabled => _isAntiBlokirEnabled;
 
   // ---------------------------------------------------------------------------
   // State
@@ -340,6 +361,10 @@ class PlayerProvider extends ChangeNotifier {
       artUri: Uri.parse(video.thumbnail),
     );
     await audioHandler.addQueueItem(mediaItem);
+  }
+
+  Future<void> clearQueue() async {
+    await audioHandler.clearQueue();
   }
 
   // ---------------------------------------------------------------------------

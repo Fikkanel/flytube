@@ -32,4 +32,26 @@ class VideoModel {
       lengthSeconds: json['lengthSeconds'] ?? 0,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'videoId': videoId,
+      'title': title,
+      'author': author,
+      'authorId': authorId,
+      'thumbnail': thumbnail,
+      'lengthSeconds': lengthSeconds,
+    };
+  }
+
+  factory VideoModel.fromMap(Map<String, dynamic> map) {
+    return VideoModel(
+      videoId: map['videoId'] ?? '',
+      title: map['title'] ?? '',
+      author: map['author'] ?? '',
+      authorId: map['authorId'] ?? '',
+      thumbnail: map['thumbnail'] ?? '',
+      lengthSeconds: map['lengthSeconds'] ?? 0,
+    );
+  }
 }

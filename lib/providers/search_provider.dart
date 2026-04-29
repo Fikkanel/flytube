@@ -7,15 +7,15 @@ class SearchProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
   
   List<VideoModel> _results = [];
-  List<VideoModel> get results => _results;
-
+  List<String> _suggestions = [];
   bool _isLoading = false;
-  bool get isLoading => _isLoading;
-
   String? _errorMessage;
-  String? get errorMessage => _errorMessage;
-
   String _lastQuery = '';
+
+  List<VideoModel> get results => _results;
+  List<String> get suggestions => _suggestions;
+  bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
   String get lastQuery => _lastQuery;
 
   SearchProvider() {
@@ -36,6 +36,7 @@ class SearchProvider extends ChangeNotifier {
     _isLoading = true;
     _errorMessage = null;
     _lastQuery = query;
+    _suggestions = []; // Clear suggestions when searching
     notifyListeners();
 
     try {
@@ -44,10 +45,33 @@ class SearchProvider extends ChangeNotifier {
 
       _results = await _apiService.searchVideos(query);
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = 'Gagal melakukan pencarian. Periksa koneksi internet Anda.';
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> fetchSuggestions(String query) async {
+    if (query.trim().isEmpty) {
+      _suggestions = [];
+      notifyListeners();
+      return;
+    }
+
+    try {
+      final suggestions = await _apiService.getSearchSuggestions(query);
+      _suggestions = suggestions.toList();
+      notifyListeners();
+    } catch (e) {
+      _suggestions = [];
+      // Don't show error for suggestions, just fail silently
+      notifyListeners();
+    }
+  }
+
+  void clearSuggestions() {
+    _suggestions = [];
+    notifyListeners();
   }
 }

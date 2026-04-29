@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:audio_service/audio_service.dart';
 import '../providers/search_provider.dart';
 import '../providers/player_provider.dart';
+import '../providers/playlist_provider.dart';
 import '../models/video_model.dart';
 import 'player_screen.dart';
 
@@ -16,6 +17,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  bool _isSuggesting = false;
 
   @override
   void initState() {
@@ -26,6 +29,18 @@ class _HomeScreenState extends State<HomeScreen> {
         _searchController.text = s;
       }
     });
+    _searchFocusNode.addListener(() {
+      setState(() {
+        _isSuggesting = _searchFocusNode.hasFocus && _searchController.text.isNotEmpty;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
   }
 
   @override
@@ -38,6 +53,30 @@ class _HomeScreenState extends State<HomeScreen> {
             pinned: false,
             snap: true,
             title: const Text('FlyTube', style: TextStyle(fontWeight: FontWeight.bold)),
+            actions: [
+              Consumer<PlayerProvider>(
+                builder: (context, playerProvider, child) {
+                  return IconButton(
+                    icon: Icon(
+                      playerProvider.isAntiBlokirEnabled ? Icons.shield : Icons.shield_outlined,
+                      color: playerProvider.isAntiBlokirEnabled ? const Color(0xFF1DB954) : Colors.white54,
+                    ),
+                    onPressed: () {
+                      playerProvider.toggleAntiBlokir();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(playerProvider.isAntiBlokirEnabled 
+                            ? 'Mode Anti-Blokir Aktif' 
+                            : 'Mode Anti-Blokir Mati'),
+                          duration: const Duration(seconds: 1),
+                        ),
+                      );
+                    },
+                    tooltip: 'Mode Anti-Blokir (Gunakan jika Wi-Fi bermasalah)',
+                  );
+                },
+              ),
+            ],
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(60),
               child: Padding(
@@ -47,26 +86,37 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: Colors.white10,
                     borderRadius: BorderRadius.circular(30),
                   ),
-                  child: TextField(
-                    controller: _searchController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: "Search song or video...",
-                      hintStyle: const TextStyle(color: Colors.white54),
-                      prefixIcon: const Icon(Icons.search, color: Colors.white54),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.all(16),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.white54),
-                        onPressed: () {
-                          _searchController.clear();
-                        },
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: "Search song or video...",
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.all(16),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.clear, color: Colors.white54),
+                          onPressed: () {
+                            _searchController.clear();
+                            context.read<SearchProvider>().clearSuggestions();
+                          },
+                        ),
                       ),
+                      onChanged: (value) {
+                        setState(() {
+                          _isSuggesting = _searchFocusNode.hasFocus && value.isNotEmpty;
+                        });
+                        context.read<SearchProvider>().fetchSuggestions(value);
+                      },
+                      onSubmitted: (value) {
+                        setState(() {
+                          _isSuggesting = false;
+                        });
+                        context.read<SearchProvider>().search(value);
+                      },
                     ),
-                    onSubmitted: (value) {
-                      context.read<SearchProvider>().search(value);
-                    },
-                  ),
                 ),
               ),
             ),
@@ -76,6 +126,30 @@ class _HomeScreenState extends State<HomeScreen> {
               if (searchProvider.isLoading) {
                 return const SliverFillRemaining(
                   child: Center(child: CircularProgressIndicator(color: Color(0xFF1DB954))),
+                );
+              }
+
+              if (_isSuggesting && searchProvider.suggestions.isNotEmpty) {
+                return SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final suggestion = searchProvider.suggestions[index];
+                      return ListTile(
+                        leading: const Icon(Icons.history, color: Colors.white24),
+                        title: Text(suggestion, style: const TextStyle(color: Colors.white70)),
+                        trailing: const Icon(Icons.north_west, color: Colors.white24, size: 18),
+                        onTap: () {
+                          _searchController.text = suggestion;
+                          _searchFocusNode.unfocus();
+                          setState(() {
+                            _isSuggesting = false;
+                          });
+                          searchProvider.search(suggestion);
+                        },
+                      );
+                    },
+                    childCount: searchProvider.suggestions.length,
+                  ),
                 );
               }
 
@@ -136,7 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: _buildMiniPlayer(),
+      // Mini player is now handled by _AppShell overlay globally
     );
   }
 
@@ -163,17 +237,29 @@ class _HomeScreenState extends State<HomeScreen> {
         video.author,
         style: const TextStyle(color: Colors.white54),
       ),
-      trailing: IconButton(
-        icon: const Icon(Icons.playlist_add, color: Colors.white54),
-        onPressed: () {
-          context.read<PlayerProvider>().addToQueue(video);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Ditambahkan ke Antrean'), 
-              duration: Duration(seconds: 1),
-            ),
-          );
+      trailing: PopupMenuButton<String>(
+        icon: const Icon(Icons.more_vert, color: Colors.white54),
+        color: const Color(0xFF181818),
+        onSelected: (value) {
+          if (value == 'queue') {
+            context.read<PlayerProvider>().addToQueue(video);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Ditambahkan ke Antrean'), duration: Duration(seconds: 1)),
+            );
+          } else if (value == 'playlist') {
+            _showAddToPlaylistDialog(context, video);
+          }
         },
+        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+          const PopupMenuItem<String>(
+            value: 'queue',
+            child: Text('Tambahkan ke Antrean', style: TextStyle(color: Colors.white)),
+          ),
+          const PopupMenuItem<String>(
+            value: 'playlist',
+            child: Text('Simpan ke Playlist', style: TextStyle(color: Colors.white)),
+          ),
+        ],
       ),
       onTap: () {
         context.read<PlayerProvider>().playVideo(video);
@@ -185,74 +271,46 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildMiniPlayer() {
-    return Consumer<PlayerProvider>(
-      builder: (context, playerProvider, child) {
-        final currentVideo = playerProvider.currentVideo;
-        if (currentVideo == null) return const SizedBox.shrink();
-
-        return GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const PlayerScreen()),
-            );
-          },
-          child: Container(
-            color: const Color(0xFF181818),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: CachedNetworkImage(
-                    imageUrl: currentVideo.thumbnail,
-                    width: 40,
-                    height: 40,
-                    fit: BoxFit.cover,
-                    errorWidget: (context, url, error) => const Icon(Icons.music_note),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        currentVideo.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        currentVideo.author,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white54, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                StreamBuilder<PlaybackState>(
-                  stream: playerProvider.playbackStateStream,
-                  builder: (context, snapshot) {
-                    final playing = snapshot.data?.playing ?? false;
-                    return IconButton(
-                      icon: Icon(playing ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                      onPressed: () {
-                        if (playing) {
-                          playerProvider.audioHandler.pause();
-                        } else {
-                          playerProvider.audioHandler.play();
-                        }
+  void _showAddToPlaylistDialog(BuildContext context, VideoModel video) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF181818),
+          title: const Text('Simpan ke Playlist'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Consumer<PlaylistProvider>(
+              builder: (context, provider, child) {
+                if (provider.playlists.isEmpty) {
+                  return const Text('Belum ada playlist.', style: TextStyle(color: Colors.white54));
+                }
+                return ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: provider.playlists.length,
+                  itemBuilder: (context, index) {
+                    final playlist = provider.playlists[index];
+                    return ListTile(
+                      title: Text(playlist.name, style: const TextStyle(color: Colors.white)),
+                      onTap: () {
+                        provider.addVideoToPlaylist(playlist.id, video);
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Tersimpan di ${playlist.name}')),
+                        );
                       },
                     );
                   },
-                ),
-              ],
+                );
+              },
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal', style: TextStyle(color: Colors.white54)),
+            ),
+          ],
         );
       },
     );
