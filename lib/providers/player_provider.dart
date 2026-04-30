@@ -413,15 +413,16 @@ class PlayerProvider extends ChangeNotifier {
     final audioPos = state.position;
 
     // Sync Play/Pause
-    if (isAudioPlaying && !_videoController!.value.isPlaying) {
+    if (isAudioPlaying && !_videoController!.value.isPlaying && !_videoController!.value.isBuffering) {
       _videoController!.play();
     } else if (!isAudioPlaying && _videoController!.value.isPlaying) {
       _videoController!.pause();
     }
 
     // Sync Position (Drift correction)
+    // Be less aggressive to avoid "jumping" loops
     final drift = (_videoController!.value.position - audioPos).abs().inMilliseconds;
-    if (isAudioPlaying && drift > 1500) {
+    if (isAudioPlaying && drift > 3000 && !_videoController!.value.isBuffering) {
       _videoController!.seekTo(audioPos);
     }
     
@@ -429,7 +430,12 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   void _onVideoControllerUpdate() {
-    if (_videoController == null) return;
+    if (_videoController == null || _isSwitchingMode) return;
+
+    // If video is buffering, pause the audio to wait for it
+    if (_videoController!.value.isBuffering && audioHandler.playbackState.value.playing) {
+      audioHandler.pause();
+    }
 
     // Auto-play next track if video is finished
     if (_videoController!.value.isInitialized &&
