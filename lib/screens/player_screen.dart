@@ -324,9 +324,7 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
   // ===========================================================================
 
   Widget _buildControls(BuildContext context, PlayerProvider provider) {
-    if (provider.currentMode == PlaybackMode.video) {
-      return _buildVideoControls(context, provider);
-    }
+    // Force audio controls for v1.1.1
     return _buildAudioControls(context, provider);
   }
 
@@ -393,64 +391,11 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
               icon: const Icon(Icons.skip_next),
               onPressed: () => provider.audioHandler.skipToNext(),
             ),
-            // Mode toggle — switch to video
-            _buildModeToggleButton(context, provider),
+            // Mode toggle disabled
+            const SizedBox(width: 48), 
           ],
         );
       }
-    );
-  }
-
-  Widget _buildVideoControls(BuildContext context, PlayerProvider provider) {
-    final playing = provider.isVideoPlaying;
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Queue
-        IconButton(
-          iconSize: 32,
-          icon: const Icon(Icons.queue_music, color: Colors.white54),
-          onPressed: () => _showQueueBottomSheet(context, provider),
-        ),
-        // Previous
-        IconButton(
-          iconSize: 48,
-          icon: const Icon(Icons.skip_previous),
-          onPressed: () => provider.audioHandler.skipToPrevious(),
-        ),
-        const SizedBox(width: 8),
-        // Play/Pause
-        Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).primaryColor,
-            shape: BoxShape.circle,
-          ),
-          child: IconButton(
-            iconSize: 64,
-            color: Colors.white,
-            icon: provider.isSwitchingMode
-                ? const CircularProgressIndicator(color: Colors.white)
-                : Icon(playing ? Icons.pause : Icons.play_arrow),
-            onPressed: () {
-              if (playing) {
-                provider.videoPause();
-              } else {
-                provider.videoPlay();
-              }
-            },
-          ),
-        ),
-        const SizedBox(width: 8),
-        // Next
-        IconButton(
-          iconSize: 48,
-          icon: const Icon(Icons.skip_next),
-          onPressed: () => provider.audioHandler.skipToNext(),
-        ),
-        // Mode toggle — switch to audio
-        _buildModeToggleButton(context, provider),
-      ],
     );
   }
 
