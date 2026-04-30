@@ -391,31 +391,19 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
               icon: const Icon(Icons.skip_next),
               onPressed: () => provider.audioHandler.skipToNext(),
             ),
-            // Mode toggle disabled
-            const SizedBox(width: 48), 
+            // Queue
+            IconButton(
+              iconSize: 32,
+              icon: const Icon(Icons.queue_music, color: Colors.white54),
+              onPressed: () => _showQueueBottomSheet(context, provider),
+            ),
           ],
         );
       }
     );
   }
 
-  /// Toggle button: MP3 ↔ MP4
-  Widget _buildModeToggleButton(BuildContext context, PlayerProvider provider) {
-    final isVideo = provider.currentMode == PlaybackMode.video;
-    return IconButton(
-      iconSize: 32,
-      icon: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        child: Icon(
-          isVideo ? Icons.music_note : Icons.videocam,
-          key: ValueKey(isVideo),
-          color: Theme.of(context).primaryColor,
-        ),
-      ),
-      tooltip: isVideo ? 'Beralih ke MP3' : 'Beralih ke MP4',
-      onPressed: provider.isSwitchingMode ? null : () => provider.toggleMode(),
-    );
-  }
+
 
   void _showQueueBottomSheet(BuildContext context, PlayerProvider provider) {
     showModalBottomSheet(
