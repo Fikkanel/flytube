@@ -273,7 +273,12 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
         orElse: () => sorted.first,
       );
 
-      return stream.url.toString();
+      final finalUrl = stream.url.toString();
+      if (isAntiBlokirEnabled) {
+        final proxyBase = customProxyUrl ?? 'https://corsproxy.io/?url=';
+        return '$proxyBase${Uri.encodeComponent(finalUrl)}';
+      }
+      return finalUrl;
     } catch (e) {
       debugPrint("YT Explode [$clients] gagal: $e");
       return null;
@@ -298,8 +303,14 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
               (a, b) => (b['bitrate'] ?? 0).compareTo(a['bitrate'] ?? 0));
           // Pick medium quality for faster buffering
           final idx = audioStreams.length > 2 ? 1 : 0;
-          final url = audioStreams[idx]['url'] as String?;
-          if (url != null && url.isNotEmpty) return url;
+          final streamUrl = audioStreams[idx]['url'] as String?;
+          if (streamUrl != null && streamUrl.isNotEmpty) {
+            if (isAntiBlokirEnabled) {
+              final proxyBase = customProxyUrl ?? 'https://corsproxy.io/?url=';
+              return '$proxyBase${Uri.encodeComponent(streamUrl)}';
+            }
+            return streamUrl;
+          }
         }
       }
     } catch (e) {
@@ -325,7 +336,12 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
           if (audioStreams.isNotEmpty) {
             audioStreams.sort((a, b) => (int.tryParse(b['bitrate']?.toString() ?? '0') ?? 0)
                 .compareTo(int.tryParse(a['bitrate']?.toString() ?? '0') ?? 0));
-            return audioStreams.first['url'] as String?;
+            final streamUrl = audioStreams.first['url'] as String?;
+            if (streamUrl != null && isAntiBlokirEnabled) {
+              final proxyBase = customProxyUrl ?? 'https://corsproxy.io/?url=';
+              return '$proxyBase${Uri.encodeComponent(streamUrl)}';
+            }
+            return streamUrl;
           }
         }
       }
@@ -413,7 +429,12 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
         orElse: () => sorted.last,
       );
 
-      return stream.url.toString();
+      final finalUrl = stream.url.toString();
+      if (isAntiBlokirEnabled) {
+        final proxyBase = customProxyUrl ?? 'https://corsproxy.io/?url=';
+        return '$proxyBase${Uri.encodeComponent(finalUrl)}';
+      }
+      return finalUrl;
     } catch (e) {
       debugPrint("YT Muxed [$clients] gagal: $e");
       return null;
@@ -425,7 +446,8 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
     try {
       String url = '$instance/streams/$videoId';
       if (isAntiBlokirEnabled) {
-        url = 'https://corsproxy.io/?url=${Uri.encodeComponent(url)}';
+        final proxyBase = customProxyUrl ?? 'https://corsproxy.io/?url=';
+        url = '$proxyBase${Uri.encodeComponent(url)}';
       }
 
       final response = await _dio.get(url);
@@ -448,8 +470,14 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
             (s) => s['quality']?.toString().contains('720') == true,
             orElse: () => muxed.first,
           );
-          final url = stream['url'] as String?;
-          if (url != null && url.isNotEmpty) return url;
+          final streamUrl = stream['url'] as String?;
+          if (streamUrl != null && streamUrl.isNotEmpty) {
+            if (isAntiBlokirEnabled) {
+              final proxyBase = customProxyUrl ?? 'https://corsproxy.io/?url=';
+              return '$proxyBase${Uri.encodeComponent(streamUrl)}';
+            }
+            return streamUrl;
+          }
         }
       }
     } catch (e) {
@@ -463,7 +491,8 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
     try {
       String url = '$instance/api/v1/videos/$videoId';
       if (isAntiBlokirEnabled) {
-        url = 'https://corsproxy.io/?url=${Uri.encodeComponent(url)}';
+        final proxyBase = customProxyUrl ?? 'https://corsproxy.io/?url=';
+        url = '$proxyBase${Uri.encodeComponent(url)}';
       }
 
       final response = await _dio.get(url);
@@ -482,7 +511,12 @@ class FlyTubeAudioHandler extends BaseAudioHandler with SeekHandler {
               (s) => s['resolution']?.toString().contains('720') == true,
               orElse: () => videoStreams.first,
             );
-            return stream['url'] as String?;
+            final streamUrl = stream['url'] as String?;
+            if (streamUrl != null && isAntiBlokirEnabled) {
+              final proxyBase = customProxyUrl ?? 'https://corsproxy.io/?url=';
+              return '$proxyBase${Uri.encodeComponent(streamUrl)}';
+            }
+            return streamUrl;
           }
         }
       }
